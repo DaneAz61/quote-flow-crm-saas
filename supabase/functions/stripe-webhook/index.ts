@@ -3,6 +3,9 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 
+// Configure o webhook para não verificar JWT (permitir acesso público)
+// Isso é necessário para que o Stripe possa enviar eventos para o webhook
+
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
   apiVersion: "2023-10-16",
 });
@@ -20,6 +23,12 @@ const supabaseClient = createClient(
 interface EventHandlers {
   [key: string]: (event: Stripe.Event) => Promise<void>;
 }
+
+// Helper para logs mais legíveis
+const logEvent = (eventType: string, details?: any) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[WEBHOOK] ${eventType}${detailsStr}`);
+};
 
 // Event handlers for different webhook events
 const eventHandlers: EventHandlers = {
@@ -40,7 +49,7 @@ const eventHandlers: EventHandlers = {
       // Get subscription plan details
       const priceId = subscription.items.data[0].price.id;
       const { data: priceData } = await stripe.prices.retrieve(priceId);
-      const planName = priceData.nickname || "premium-mensal";
+      const planName = priceData.nickname || "Premium";
       
       // Create or update subscription record
       await supabaseClient
@@ -53,17 +62,10 @@ const eventHandlers: EventHandlers = {
           current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
         }, { onConflict: "stripe_subscription_id" });
       
-      // Log activity
-      await supabaseClient.from("activity_log").insert({
-        entity_type: "subscription",
-        entity_id: userData.id,
-        action: "subscription_created",
-        actor_id: userData.id,
-        data: {
-          subscription_id: subscription.id,
-          plan: planName,
-          status: subscription.status
-        }
+      logEvent("subscription.created", { 
+        user_id: userData.id, 
+        plan: planName, 
+        status: subscription.status 
       });
     } catch (error) {
       console.error("Error handling subscription.created event:", error);
@@ -94,16 +96,10 @@ const eventHandlers: EventHandlers = {
         })
         .eq("stripe_subscription_id", subscription.id);
       
-      // Log activity
-      await supabaseClient.from("activity_log").insert({
-        entity_type: "subscription",
-        entity_id: userData.id,
-        action: "subscription_updated",
-        actor_id: userData.id,
-        data: {
-          subscription_id: subscription.id,
-          status: subscription.status
-        }
+      logEvent("subscription.updated", { 
+        user_id: userData.id, 
+        status: subscription.status, 
+        end_date: new Date(subscription.current_period_end * 1000).toISOString() 
       });
     } catch (error) {
       console.error("Error handling subscription.updated event:", error);
@@ -133,16 +129,7 @@ const eventHandlers: EventHandlers = {
         })
         .eq("stripe_subscription_id", subscription.id);
       
-      // Log activity
-      await supabaseClient.from("activity_log").insert({
-        entity_type: "subscription",
-        entity_id: userData.id,
-        action: "subscription_canceled",
-        actor_id: userData.id,
-        data: {
-          subscription_id: subscription.id
-        }
-      });
+      logEvent("subscription.canceled", { user_id: userData.id });
     } catch (error) {
       console.error("Error handling subscription.deleted event:", error);
       throw error;
@@ -163,7 +150,7 @@ const eventHandlers: EventHandlers = {
       
       if (userError) throw userError;
       
-      // If this is a subscription invoice, update the subscription
+      // Se for uma fatura de assinatura, atualize o status da assinatura
       if (invoice.subscription) {
         const subscriptionId = invoice.subscription as string;
         
@@ -175,17 +162,11 @@ const eventHandlers: EventHandlers = {
           .eq("stripe_subscription_id", subscriptionId);
       }
       
-      // Log activity
-      await supabaseClient.from("activity_log").insert({
-        entity_type: "invoice",
-        entity_id: userData.id,
-        action: "invoice_paid",
-        actor_id: userData.id,
-        data: {
-          invoice_id: invoice.id,
-          amount_paid: invoice.amount_paid / 100,
-          currency: invoice.currency
-        }
+      logEvent("invoice.paid", { 
+        user_id: userData.id, 
+        invoice_id: invoice.id, 
+        amount: invoice.amount_paid / 100,
+        currency: invoice.currency
       });
     } catch (error) {
       console.error("Error handling invoice.paid event:", error);
@@ -207,7 +188,7 @@ const eventHandlers: EventHandlers = {
       
       if (userError) throw userError;
       
-      // If this is a subscription invoice, update the subscription
+      // Se for uma fatura de assinatura, atualize o status da assinatura
       if (invoice.subscription) {
         const subscriptionId = invoice.subscription as string;
         
@@ -219,16 +200,9 @@ const eventHandlers: EventHandlers = {
           .eq("stripe_subscription_id", subscriptionId);
       }
       
-      // Log activity
-      await supabaseClient.from("activity_log").insert({
-        entity_type: "invoice",
-        entity_id: userData.id,
-        action: "invoice_payment_failed",
-        actor_id: userData.id,
-        data: {
-          invoice_id: invoice.id,
-          attempt_count: invoice.attempt_count
-        }
+      logEvent("invoice.payment_failed", { 
+        user_id: userData.id, 
+        invoice_id: invoice.id 
       });
     } catch (error) {
       console.error("Error handling invoice.payment_failed event:", error);

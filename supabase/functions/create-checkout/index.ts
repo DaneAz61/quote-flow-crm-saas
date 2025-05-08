@@ -102,14 +102,11 @@ serve(async (req) => {
     const origin = req.headers.get("origin") || "http://localhost:8080";
     logStep("Creating checkout session", { origin });
     
-    // Use a variable for the price ID so it's easy to update
-    const priceId = "price_monthly_premium"; // Substitua pelo ID real do seu preço no Stripe
-    
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       line_items: [
         {
-          // Use price_data para criar o preço dinamicamente
+          // Preço dinâmico para R$9,90
           price_data: {
             currency: 'brl',
             product_data: {

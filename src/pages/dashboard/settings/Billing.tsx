@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,11 +13,30 @@ const Billing = () => {
   const { user, subscription, refreshSubscription } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isPortalLoading, setIsPortalLoading] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     // Refresh subscription data when component mounts
     refreshSubscription();
-  }, [refreshSubscription]);
+    
+    // Check for success or canceled query params
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('success') === 'true') {
+      toast({
+        title: "Assinatura ativada com sucesso!",
+        description: "Obrigado por se tornar um membro premium.",
+        variant: "default",
+      });
+      // Atualizar informações de assinatura após o checkout bem-sucedido
+      refreshSubscription();
+    } else if (searchParams.get('canceled') === 'true') {
+      toast({
+        title: "Checkout cancelado",
+        description: "Você cancelou o processo de assinatura.",
+        variant: "destructive",
+      });
+    }
+  }, [refreshSubscription, location, toast]);
 
   const handleSubscribe = async () => {
     setIsLoading(true);
