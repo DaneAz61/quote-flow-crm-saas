@@ -62,7 +62,7 @@ const PricingSection: React.FC<PricingSectionProps> = ({ onGetStarted }) => {
             <div className="text-sm text-muted-foreground mb-6">Para empresas em crescimento</div>
             
             <div className="mb-6">
-              <span className="text-4xl font-bold">R$99</span>
+              <span className="text-4xl font-bold">R$9,90</span>
               <span className="text-muted-foreground">/mês</span>
             </div>
             

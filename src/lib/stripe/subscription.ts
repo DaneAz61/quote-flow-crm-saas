@@ -1,3 +1,4 @@
+
 import { supabase } from "@/integrations/supabase/client";
 
 export interface SubscriptionData {
@@ -24,6 +25,10 @@ export async function checkSubscription(): Promise<SubscriptionData> {
   }
 }
 
+/**
+ * Creates a Stripe checkout session with the specified price
+ * If no priceId is provided, the default price from the Edge Function will be used
+ */
 export async function createCheckoutSession(): Promise<string | null> {
   try {
     const { data, error } = await supabase.functions.invoke('create-checkout', {

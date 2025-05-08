@@ -261,7 +261,7 @@ const Billing = () => {
                 
                 <div className="mt-8 border-t pt-6">
                   <div className="flex justify-between items-center">
-                    <div className="text-2xl font-bold">R$99/mês</div>
+                    <div className="text-2xl font-bold">R$9,90/mês</div>
                     <Button onClick={handleSubscribe} disabled={isLoading}>
                       {isLoading ? "Carregando..." : "Assinar agora"}
                     </Button>
