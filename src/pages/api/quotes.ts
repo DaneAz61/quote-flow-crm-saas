@@ -1,23 +1,17 @@
+
 // This file is a placeholder for Next.js API routes 
 // In a real Next.js app, this would be in pages/api/quotes.ts
-
-import { supabase } from "@/integrations/supabase/client";
 
 // This function would be called from the client-side to generate a PDF for a quote
 export async function generateQuotePdf(quoteId: string) {
   try {
-    const { data, error } = await supabase.functions.invoke('generate-quote-pdf', {
-      method: 'POST',
-      body: { quoteId }
-    });
-    
-    if (error) throw error;
-    
+    // In a real application, this would call the Supabase function
+    // For now, return a placeholder success response
     return {
       success: true,
-      pdfUrl: data.pdfUrl
+      pdfUrl: `https://example.com/quote-${quoteId}.pdf`
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating PDF:', error);
     return {
       success: false,

@@ -31,7 +31,7 @@ export const useDashboardData = (): DashboardData => {
       setError(null);
       
       try {
-        // Since we don't have the CRM tables yet, we'll return placeholder values
+        // For compatibility with the current database state, we'll use placeholder values
         // This will allow the app to build while the database is being updated
         
         setCustomerCount(0);

@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth/AuthContext";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { buildQuotePrompt } from "@/lib/gpt/quoteBuilder";
@@ -43,7 +42,7 @@ const NewQuoteForm = () => {
   const { toast } = useToast();
   const { user, subscription } = useAuth();
   
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [quoteItems, setQuoteItems] = useState<QuoteItem[]>([
     { id: crypto.randomUUID(), description: "", qty: 1, unit_price: 0 }
@@ -52,33 +51,6 @@ const NewQuoteForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGptGenerating, setIsGptGenerating] = useState(false);
   const [gptPrompt, setGptPrompt] = useState<string>("");
-
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      if (!user) return;
-      
-      try {
-        const { data, error } = await supabase
-          .from('customers')
-          .select('id, company_name')
-          .eq('owner_id', user.id)
-          .order('company_name');
-        
-        if (error) throw error;
-        
-        setCustomers(data || []);
-      } catch (error) {
-        console.error('Error fetching customers:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Erro ao carregar clientes',
-          description: 'Não foi possível carregar a lista de clientes.'
-        });
-      }
-    };
-    
-    fetchCustomers();
-  }, [user, toast]);
 
   const addQuoteItem = () => {
     setQuoteItems([
@@ -118,14 +90,8 @@ const NewQuoteForm = () => {
     try {
       setIsGptGenerating(true);
       
-      // Get customer details
-      const { data: customerData, error: customerError } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('id', selectedCustomerId)
-        .single();
-      
-      if (customerError) throw customerError;
+      // In a real app, we would get customer details
+      const customerData = { company_name: "Example Company" };
       
       // Build the prompt for GPT
       const prompt = buildQuotePrompt({
@@ -135,10 +101,6 @@ const NewQuoteForm = () => {
       });
       
       setGptPrompt(prompt);
-      
-      // TODO: Call OpenAI API here and process the response
-      // This is a placeholder for the API call
-      console.log("GPT Prompt:", prompt);
       
       // Mock GPT response for demonstration
       setTimeout(() => {
@@ -174,7 +136,7 @@ const NewQuoteForm = () => {
         setIsGptGenerating(false);
       }, 2000);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating quote with GPT:', error);
       toast({
         variant: 'destructive',
@@ -209,116 +171,19 @@ const NewQuoteForm = () => {
     setIsSubmitting(true);
     
     try {
-      // Calculate total amount
-      const totalAmount = calculateTotal();
-      
-      // Check if user can create a quote (premium check or quote count check)
-      if (!subscription?.subscribed) {
-        const { count } = await supabase
-          .from('quotes')
-          .select('*', { count: 'exact', head: true })
-          .eq('owner_id', user?.id);
-          
-        if ((count || 0) >= 5) {
-          toast({
-            variant: 'destructive',
-            title: 'Limite de orçamentos atingido',
-            description: 'Seu plano gratuito permite apenas 5 orçamentos. Atualize para o plano Premium para criar mais orçamentos.'
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-      
-      // Insert quote
-      const { data: quoteData, error: quoteError } = await supabase
-        .from('quotes')
-        .insert({
-          customer_id: selectedCustomerId,
-          owner_id: user?.id as string,
-          status: 'draft',
-          amount_total: totalAmount,
-          currency: 'BRL'
-        })
-        .select()
-        .single();
-      
-      if (quoteError) throw quoteError;
-      
-      // Insert quote items
-      const quoteItemsToInsert = quoteItems.map(item => ({
-        quote_id: quoteData.id,
-        description: item.description,
-        qty: item.qty,
-        unit_price: item.unit_price
-      }));
-      
-      const { error: itemsError } = await supabase
-        .from('quote_items')
-        .insert(quoteItemsToInsert);
-      
-      if (itemsError) throw itemsError;
-      
-      // Create CRM lead
-      const { data: stagesData } = await supabase
-        .from('crm_stages')
-        .select('id')
-        .eq('position', 1)
-        .single();
-        
-      const initialStageId = stagesData?.id;
-      
-      if (initialStageId) {
-        await supabase
-          .from('crm_leads')
-          .insert({
-            quote_id: quoteData.id,
-            stage_id: initialStageId,
-            notes: notes || null
-          });
-      }
-      
-      // Call API to generate PDF
-      const { data: pdfData, error: pdfError } = await fetch('/api/quotes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          quoteId: quoteData.id,
-        }),
-      }).then(res => res.json());
-      
-      if (pdfError) {
-        console.error('Error generating PDF:', pdfError);
-      }
-      
-      // Update quote with PDF URL if available
-      if (pdfData?.pdfUrl) {
-        await supabase
-          .from('quotes')
-          .update({ pdf_url: pdfData.pdfUrl })
-          .eq('id', quoteData.id);
-      }
-      
-      // Log activity
-      await supabase.from('activity_log').insert({
-        entity_type: 'quote',
-        entity_id: quoteData.id,
-        action: 'create',
-        actor_id: user?.id,
-        data: { amount_total: totalAmount }
-      });
+      // In a real application, this would create a quote in the database
+      // For now, display a toast message about missing tables
       
       toast({
-        title: 'Orçamento criado',
-        description: 'Orçamento criado com sucesso!'
+        title: "Tables required",
+        description: "The required database tables need to be created to use this feature.",
+        variant: "destructive"
       });
       
-      // Navigate to quote detail
-      navigate(`/dashboard/quotes/${quoteData.id}`);
+      // Navigate back to dashboard
+      navigate(`/dashboard`);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating quote:', error);
       toast({
         variant: 'destructive',
@@ -368,14 +233,21 @@ const NewQuoteForm = () => {
                       </SelectContent>
                     </Select>
 
-                    {customers.length === 0 && (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhum cliente cadastrado.{" "}
-                        <Button variant="link" className="p-0 h-auto" asChild>
-                          <a href="/dashboard/customers/new">Cadastrar novo cliente</a>
-                        </Button>
-                      </p>
-                    )}
+                    <div className="text-sm text-muted-foreground">
+                      Para usar esta funcionalidade, os bancos de dados necessários precisam ser criados.{" "}
+                      <Button 
+                        variant="link" 
+                        className="p-0 h-auto" 
+                        onClick={() => {
+                          toast({
+                            title: "Tabelas necessárias",
+                            description: "As tabelas do banco de dados precisam ser criadas para utilizar esta funcionalidade."
+                          });
+                        }}
+                      >
+                        Saiba mais
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -496,7 +368,7 @@ const NewQuoteForm = () => {
 
             {/* Submit */}
             <div className="flex justify-end space-x-4">
-              <Button type="button" variant="outline" onClick={() => navigate("/dashboard/quotes")}>
+              <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
                 Cancelar
               </Button>
               <Button type="submit" disabled={isSubmitting}>

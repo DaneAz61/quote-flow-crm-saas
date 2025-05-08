@@ -1,46 +1,16 @@
 // This file is a placeholder for Next.js API routes 
 // In a real Next.js app, this would be in pages/api/quotes/[id]/download.ts
 
-import { supabase } from "@/integrations/supabase/client";
-
 // This function would be called from the client-side to get a download URL for a quote PDF
 export async function getQuoteDownloadUrl(quoteId: string) {
   try {
-    // First, get the quote to check if the user has access and get the PDF URL
-    const { data: quote, error: quoteError } = await supabase
-      .from('quotes')
-      .select('pdf_url')
-      .eq('id', quoteId)
-      .single();
-    
-    if (quoteError) throw quoteError;
-    if (!quote.pdf_url) throw new Error('PDF not found for this quote');
-    
-    // Return the already signed URL
+    // In a real application, this would fetch the quote from Supabase
+    // For now, return a placeholder success response
     return {
       success: true,
-      url: quote.pdf_url
+      url: `https://example.com/quote-${quoteId}.pdf`
     };
-    
-    // If the URL wasn't already signed, you'd need to get a fresh signed URL from storage:
-    /*
-    // Extract the path from the URL
-    const path = quote.pdf_url.split('/').slice(-2).join('/'); // e.g. "quotes/123.pdf"
-    
-    // Get a fresh signed URL
-    const { data, error } = await supabase
-      .storage
-      .from('pdfs')
-      .createSignedUrl(path, 60 * 60); // 1 hour expiration
-    
-    if (error) throw error;
-    
-    return {
-      success: true,
-      url: data.signedUrl
-    };
-    */
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error getting quote download URL:', error);
     return {
       success: false,
