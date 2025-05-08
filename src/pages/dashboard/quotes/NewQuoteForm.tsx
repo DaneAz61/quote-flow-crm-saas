@@ -42,7 +42,8 @@ const NewQuoteForm = () => {
   const { toast } = useToast();
   const { user, subscription } = useAuth();
   
-  const [customers] = useState<Customer[]>([]);
+  // Updated to include empty array as default state
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [quoteItems, setQuoteItems] = useState<QuoteItem[]>([
     { id: crypto.randomUUID(), description: "", qty: 1, unit_price: 0 }
@@ -91,7 +92,11 @@ const NewQuoteForm = () => {
       setIsGptGenerating(true);
       
       // In a real app, we would get customer details
-      const customerData = { company_name: "Example Company" };
+      // Fixed the mock data to include id
+      const customerData = { 
+        id: selectedCustomerId,
+        company_name: "Example Company" 
+      };
       
       // Build the prompt for GPT
       const prompt = buildQuotePrompt({
