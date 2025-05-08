@@ -31,42 +31,21 @@ export const useDashboardData = (): DashboardData => {
       setError(null);
       
       try {
-        if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
-          setError("Supabase environment variables are missing. Please set them in your .env file.");
-          return;
-        }
-
-        // Get customer count
-        const { count: customersCount, error: customersError } = await supabase
-          .from('customers')
-          .select('*', { count: 'exact', head: true })
-          .eq('owner_id', user.id);
+        // Since we don't have the CRM tables yet, we'll return placeholder values
+        // This will allow the app to build while the database is being updated
         
-        if (customersError) throw customersError;
+        setCustomerCount(0);
+        setQuoteCount(0);
+        setLeadCount(0);
+        setTotalAmount(0);
         
-        // Get quote count and total amount
-        const { data: quotes, error: quotesError } = await supabase
-          .from('quotes')
-          .select('id, amount_total')
-          .eq('owner_id', user.id);
+        // Display a toast message to let the user know that CRM functionality isn't available yet
+        toast({
+          title: "CRM functionality unavailable",
+          description: "The CRM tables need to be created in your database to use this feature.",
+          variant: "destructive"
+        });
         
-        if (quotesError) throw quotesError;
-        
-        // Get lead count
-        const { count: leadsCount, error: leadsError } = await supabase
-          .from('crm_leads')
-          .select('quotes!inner(owner_id)', { count: 'exact', head: true })
-          .eq('quotes.owner_id', user.id);
-        
-        if (leadsError) throw leadsError;
-        
-        setQuoteCount(quotes?.length || 0);
-        setTotalAmount(
-          quotes?.reduce((sum, quote) => sum + (quote.amount_total || 0), 0) || 0
-        );
-        
-        setCustomerCount(customersCount || 0);
-        setLeadCount(leadsCount || 0);
       } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
         setError("Failed to fetch dashboard data. Please check your connection and try again.");
