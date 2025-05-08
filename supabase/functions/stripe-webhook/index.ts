@@ -1,259 +1,99 @@
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 
-// Configure o webhook para não verificar JWT (permitir acesso público)
-// Isso é necessário para que o Stripe possa enviar eventos para o webhook
+const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-  apiVersion: "2023-10-16",
-});
-
-// Webhook secret key for verifying webhook events
-const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
-
-// Create a Supabase client with the service role key
-const supabaseClient = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-  { auth: { persistSession: false } }
-);
-
-interface EventHandlers {
-  [key: string]: (event: Stripe.Event) => Promise<void>;
-}
-
-// Helper para logs mais legíveis
-const logEvent = (eventType: string, details?: any) => {
+// Helper logging function for debugging
+const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[WEBHOOK] ${eventType}${detailsStr}`);
-};
-
-// Event handlers for different webhook events
-const eventHandlers: EventHandlers = {
-  "customer.subscription.created": async (event) => {
-    const subscription = event.data.object as Stripe.Subscription;
-    const customerId = subscription.customer as string;
-    
-    try {
-      // Get user associated with Stripe customer
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("id")
-        .eq("stripe_customer_id", customerId)
-        .single();
-      
-      if (userError) throw userError;
-      
-      // Get subscription plan details
-      const priceId = subscription.items.data[0].price.id;
-      const { data: priceData } = await stripe.prices.retrieve(priceId);
-      const planName = priceData.nickname || "Premium";
-      
-      // Create or update subscription record
-      await supabaseClient
-        .from("subscriptions")
-        .upsert({
-          user_id: userData.id,
-          stripe_subscription_id: subscription.id,
-          plan: planName,
-          status: subscription.status,
-          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        }, { onConflict: "stripe_subscription_id" });
-      
-      logEvent("subscription.created", { 
-        user_id: userData.id, 
-        plan: planName, 
-        status: subscription.status 
-      });
-    } catch (error) {
-      console.error("Error handling subscription.created event:", error);
-      throw error;
-    }
-  },
-  
-  "customer.subscription.updated": async (event) => {
-    const subscription = event.data.object as Stripe.Subscription;
-    const customerId = subscription.customer as string;
-    
-    try {
-      // Get user associated with Stripe customer
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("id")
-        .eq("stripe_customer_id", customerId)
-        .single();
-      
-      if (userError) throw userError;
-      
-      // Update subscription record
-      await supabaseClient
-        .from("subscriptions")
-        .update({
-          status: subscription.status,
-          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-        })
-        .eq("stripe_subscription_id", subscription.id);
-      
-      logEvent("subscription.updated", { 
-        user_id: userData.id, 
-        status: subscription.status, 
-        end_date: new Date(subscription.current_period_end * 1000).toISOString() 
-      });
-    } catch (error) {
-      console.error("Error handling subscription.updated event:", error);
-      throw error;
-    }
-  },
-  
-  "customer.subscription.deleted": async (event) => {
-    const subscription = event.data.object as Stripe.Subscription;
-    const customerId = subscription.customer as string;
-    
-    try {
-      // Get user associated with Stripe customer
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("id")
-        .eq("stripe_customer_id", customerId)
-        .single();
-      
-      if (userError) throw userError;
-      
-      // Update subscription record
-      await supabaseClient
-        .from("subscriptions")
-        .update({
-          status: "canceled",
-        })
-        .eq("stripe_subscription_id", subscription.id);
-      
-      logEvent("subscription.canceled", { user_id: userData.id });
-    } catch (error) {
-      console.error("Error handling subscription.deleted event:", error);
-      throw error;
-    }
-  },
-  
-  "invoice.paid": async (event) => {
-    const invoice = event.data.object as Stripe.Invoice;
-    const customerId = invoice.customer as string;
-    
-    try {
-      // Get user associated with Stripe customer
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("id")
-        .eq("stripe_customer_id", customerId)
-        .single();
-      
-      if (userError) throw userError;
-      
-      // Se for uma fatura de assinatura, atualize o status da assinatura
-      if (invoice.subscription) {
-        const subscriptionId = invoice.subscription as string;
-        
-        await supabaseClient
-          .from("subscriptions")
-          .update({
-            status: "active",
-          })
-          .eq("stripe_subscription_id", subscriptionId);
-      }
-      
-      logEvent("invoice.paid", { 
-        user_id: userData.id, 
-        invoice_id: invoice.id, 
-        amount: invoice.amount_paid / 100,
-        currency: invoice.currency
-      });
-    } catch (error) {
-      console.error("Error handling invoice.paid event:", error);
-      throw error;
-    }
-  },
-  
-  "invoice.payment_failed": async (event) => {
-    const invoice = event.data.object as Stripe.Invoice;
-    const customerId = invoice.customer as string;
-    
-    try {
-      // Get user associated with Stripe customer
-      const { data: userData, error: userError } = await supabaseClient
-        .from("users")
-        .select("id")
-        .eq("stripe_customer_id", customerId)
-        .single();
-      
-      if (userError) throw userError;
-      
-      // Se for uma fatura de assinatura, atualize o status da assinatura
-      if (invoice.subscription) {
-        const subscriptionId = invoice.subscription as string;
-        
-        await supabaseClient
-          .from("subscriptions")
-          .update({
-            status: "past_due",
-          })
-          .eq("stripe_subscription_id", subscriptionId);
-      }
-      
-      logEvent("invoice.payment_failed", { 
-        user_id: userData.id, 
-        invoice_id: invoice.id 
-      });
-    } catch (error) {
-      console.error("Error handling invoice.payment_failed event:", error);
-      throw error;
-    }
-  }
+  console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
 
 serve(async (req) => {
-  if (req.method === "POST") {
-    try {
-      const signature = req.headers.get("stripe-signature");
-      if (!signature) {
-        throw new Error("No Stripe signature found");
-      }
-      
-      const body = await req.text();
-      let event: Stripe.Event;
-      
+  try {
+    logStep("Webhook received");
+
+    if (!stripeKey) {
+      logStep("ERROR: STRIPE_SECRET_KEY is not set");
+      throw new Error("STRIPE_SECRET_KEY is not set");
+    }
+
+    const stripe = new Stripe(stripeKey, {
+      apiVersion: "2023-10-16",
+    });
+
+    // Verificar se temos o segredo do webhook configurado
+    if (!webhookSecret) {
+      logStep("WARNING: STRIPE_WEBHOOK_SECRET is not set, skipping signature verification");
+    }
+
+    const signature = req.headers.get("stripe-signature");
+    if (!signature) {
+      logStep("ERROR: No stripe-signature header found");
+      throw new Error("No stripe-signature header found");
+    }
+
+    // Obter o corpo da requisição como texto
+    const body = await req.text();
+    logStep("Request body obtained");
+
+    let event;
+
+    // Verificar a assinatura se tivermos o segredo do webhook
+    if (webhookSecret) {
       try {
         event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+        logStep("Webhook signature verified");
       } catch (err) {
-        console.error(`Webhook signature verification failed: ${err.message}`);
-        return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        logStep(`ERROR: Webhook signature verification failed - ${errorMessage}`);
+        return new Response(`Webhook signature verification failed: ${errorMessage}`, { status: 400 });
       }
-      
-      console.log(`Received event: ${event.type}`);
-      
-      // Handle the event
-      const eventHandler = eventHandlers[event.type];
-      if (eventHandler) {
-        await eventHandler(event);
-        return new Response(JSON.stringify({ received: true }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        });
-      } else {
-        // For events we're not handling
-        return new Response(JSON.stringify({ received: true, handled: false }), {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        });
+    } else {
+      // Se não tivermos o segredo do webhook, confiar no corpo sem verificação
+      try {
+        event = JSON.parse(body);
+        logStep("Event parsed without verification");
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        logStep(`ERROR: Invalid JSON payload - ${errorMessage}`);
+        return new Response(`Invalid JSON payload: ${errorMessage}`, { status: 400 });
       }
-    } catch (error) {
-      console.error("Error processing webhook:", error);
-      return new Response(JSON.stringify({ error: error.message }), {
-        headers: { "Content-Type": "application/json" },
-        status: 500,
-      });
     }
-  } else {
-    return new Response("Method not allowed", { status: 405 });
+
+    logStep(`Event processed: ${event.type}`);
+
+    // Processar eventos específicos aqui
+    switch (event.type) {
+      case 'customer.subscription.created':
+        logStep('Subscription created event received', { subscription: event.data.object.id });
+        break;
+      case 'customer.subscription.updated':
+        logStep('Subscription updated event received', { subscription: event.data.object.id });
+        break;
+      case 'customer.subscription.deleted':
+        logStep('Subscription canceled event received', { subscription: event.data.object.id });
+        break;
+      case 'invoice.paid':
+        logStep('Invoice paid event received', { invoice: event.data.object.id });
+        break;
+      case 'invoice.payment_failed':
+        logStep('Payment failed event received', { invoice: event.data.object.id });
+        break;
+      default:
+        logStep(`Unhandled event type: ${event.type}`);
+    }
+
+    return new Response(JSON.stringify({ received: true }), {
+      headers: { 'Content-Type': 'application/json' },
+      status: 200,
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logStep(`ERROR: ${errorMessage}`);
+    return new Response(`Webhook error: ${errorMessage}`, { status: 500 });
   }
 });

@@ -23,49 +23,48 @@ serve(async (req) => {
     logStep("Function started");
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
+    if (!stripeKey) {
+      logStep("ERROR: STRIPE_SECRET_KEY is not set");
+      throw new Error("STRIPE_SECRET_KEY is not set");
+    }
     logStep("Stripe key verified");
 
-    // Initialize Supabase client with the service role key
+    // Create a Supabase client with the anon key for auth validation
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } }
+      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
+    if (!authHeader) {
+      logStep("ERROR: No authorization header provided");
+      throw new Error("No authorization header provided");
+    }
     logStep("Authorization header found");
 
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
+    if (userError) {
+      logStep("Auth error", { error: userError.message });
+      throw new Error(`Authentication error: ${userError.message}`);
+    }
     const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated or email not available");
+    if (!user?.email) {
+      logStep("ERROR: User not authenticated or email not available");
+      throw new Error("User not authenticated or email not available");
+    }
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get user's Stripe customer ID
-    const { data: userRecord, error: userRecordError } = await supabaseClient
-      .from("users")
-      .select("stripe_customer_id")
-      .eq("id", user.id)
-      .single();
-      
-    if (userRecordError) {
-      logStep("Error fetching user record", { error: userRecordError.message });
-      throw userRecordError;
+    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+    if (customers.data.length === 0) {
+      logStep("ERROR: No Stripe customer found for this user");
+      throw new Error("No Stripe customer found for this user");
     }
-    
-    if (!userRecord.stripe_customer_id) {
-      throw new Error("User does not have a Stripe customer ID");
-    }
-    
-    const customerId = userRecord.stripe_customer_id;
+    const customerId = customers.data[0].id;
     logStep("Found Stripe customer", { customerId });
 
-    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-    const origin = req.headers.get("origin") || "http://localhost:8080";
-    
+    const origin = req.headers.get("origin") || "https://6ee28d48-2227-43de-902d-b21dd94cb697.lovableproject.com";
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${origin}/dashboard/settings/billing`,
