@@ -1,8 +1,7 @@
-
 // This file is a placeholder for Next.js API routes 
 // In a real Next.js app, this would be in pages/api/quotes.ts
 
-import { supabase } from "@/lib/supabase/client";
+import { supabase } from "@/integrations/supabase/client";
 
 // This function would be called from the client-side to generate a PDF for a quote
 export async function generateQuotePdf(quoteId: string) {
