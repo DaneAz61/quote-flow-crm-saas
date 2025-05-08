@@ -1,73 +1,105 @@
-# Welcome to your Lovable project
 
-## Project info
+# QuoteFlow CRM SaaS
 
-**URL**: https://lovable.dev/projects/6ee28d48-2227-43de-902d-b21dd94cb697
+QuoteFlow é uma aplicação SaaS B2B para gerenciamento de clientes, geração de orçamentos em PDF com integração GPT e cobrança de assinatura mensal via Stripe.
 
-## How can I edit this code?
+## Tecnologias
 
-There are several ways of editing your application.
+- Frontend: React 18 + TypeScript + Tailwind CSS (shadcn/ui)
+- Backend: Supabase (PostgreSQL, Auth, Storage, Edge Functions)
+- Pagamentos: Stripe Checkout/Portal
 
-**Use Lovable**
+## Funcionalidades
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/6ee28d48-2227-43de-902d-b21dd94cb697) and start prompting.
+- **Autenticação** com Supabase (email + magic link)
+- **Gerenciamento de Clientes** (cadastro, listagem, edição)
+- **Geração de Orçamentos** (inclusive com ajuda da IA)
+- **Exportação de PDF** via Edge Function
+- **CRM Kanban** para acompanhamento de leads
+- **Stripe Integração** para assinatura mensal
+- **Registro de Atividades** de todas as ações importantes
 
-Changes made via Lovable will be committed automatically to this repo.
+## Configuração do Ambiente
 
-**Use your preferred IDE**
+### Variáveis de Ambiente
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```
+VITE_SUPABASE_URL=sua_url_do_supabase
+VITE_SUPABASE_ANON_KEY=sua_chave_anon_do_supabase
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+# Para desenvolvimento local de Edge Functions
+SUPABASE_URL=sua_url_do_supabase
+SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role
+STRIPE_SECRET_KEY=sua_chave_secreta_do_stripe
+STRIPE_WEBHOOK_SECRET=seu_webhook_secret_do_stripe
 ```
 
-**Edit a file directly in GitHub**
+### Banco de Dados
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+1. Execute a migração inicial para criar todas as tabelas e políticas de segurança:
 
-**Use GitHub Codespaces**
+```bash
+supabase db push migrations/001_init.sql
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+2. Certifique-se que as tabelas e políticas foram criadas corretamente.
 
-## What technologies are used for this project?
+3. Verifique se os estágios do CRM foram criados (Novo, Enviado, Negociação, Fechado-Ganho, Fechado-Perdido).
 
-This project is built with:
+### Edge Functions
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Implante as Edge Functions para o Supabase:
 
-## How can I deploy this project?
+```bash
+supabase functions deploy stripe-webhook
+supabase functions deploy generate-quote-pdf
+supabase functions deploy create-checkout
+supabase functions deploy check-subscription
+supabase functions deploy customer-portal
+```
 
-Simply open [Lovable](https://lovable.dev/projects/6ee28d48-2227-43de-902d-b21dd94cb697) and click on Share -> Publish.
+### Configuração do Stripe
 
-## Can I connect a custom domain to my Lovable project?
+1. Crie uma conta no [Stripe](https://stripe.com) se ainda não tiver.
+2. No painel do Stripe, crie um produto "Premium-Mensal" com preço recorrente.
+3. Copie o ID do preço (price_id) e atualize o arquivo `supabase/functions/create-checkout/index.ts` com o ID correto.
+4. Configure webhooks no Stripe para apontar para sua Edge Function:
+   - URL: `https://[PROJECT_REF].supabase.co/functions/v1/stripe-webhook`
+   - Eventos para ouvir: `customer.subscription.*`, `invoice.paid`, `invoice.payment_failed`
 
-Yes, you can!
+## Desenvolvimento
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```bash
+# Instalar dependências
+pnpm install
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+# Iniciar servidor de desenvolvimento
+pnpm dev
+```
+
+## Deploy
+
+### Vercel
+
+1. Conecte este repositório ao Vercel.
+2. Configure as variáveis de ambiente necessárias.
+3. Deploy!
+
+```bash
+vercel --prod
+```
+
+## Estrutura do Projeto
+
+- `src/` - Código fonte frontend
+  - `components/` - Componentes React reutilizáveis
+  - `lib/` - Utilitários, hooks, e configurações
+  - `pages/` - Páginas da aplicação
+- `supabase/functions/` - Edge Functions do Supabase
+- `database/migrations/` - Migrações SQL
+
+## Licença
+
+Este projeto é licenciado sob a licença MIT.
